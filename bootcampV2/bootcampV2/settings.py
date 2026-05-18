@@ -11,10 +11,33 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 from pathlib import Path
-from decouple import config
+try:
+    from decouple import config
+except ImportError:
+    import os
+
+    _ENV_VALUES = {}
+
+    def _load_env_file(path):
+        if not path.exists():
+            return
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, value = line.split('=', 1)
+            _ENV_VALUES[key.strip()] = value.strip().strip('"').strip("'")
+
+    def config(key, default=None, cast=None):
+        value = os.environ.get(key, _ENV_VALUES.get(key, default))
+        return cast(value) if cast and value is not None else value
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+try:
+    _load_env_file(BASE_DIR / '.env')
+except NameError:
+    pass
 
 
 # Quick-start development settings - unsuitable for production
@@ -40,7 +63,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework.authtoken',
-    'API',
+    'API.apps.ApiConfig',
 ]
 
 MIDDLEWARE = [
@@ -84,6 +107,9 @@ DATABASES = {
         'PASSWORD': config('DB_PASSWORD', default='Aruserver@123'),
         'HOST': config('DB_HOST', default='127.0.0.1'),
         'PORT': config('DB_PORT', default='3307'),
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+        },
     }
 }
 

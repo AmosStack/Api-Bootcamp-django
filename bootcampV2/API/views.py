@@ -2,7 +2,7 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
-from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth import get_user_model
 from django.db.models import Q
 
 from .serializers import (
@@ -39,11 +39,17 @@ class UserViewSet(viewsets.ModelViewSet):
         """Use different serializers for different actions"""
         if self.action == 'create':
             return UserRegistrationSerializer
-        elif self.action in ['update', 'partial_update']:
+        elif self.action in ['update', 'partial_update', 'update_profile']:
             return UserUpdateSerializer
         elif self.action == 'login':
             return UserLoginSerializer
         return UserSerializer
+
+    def get_queryset(self):
+        """Limit normal users to their own record."""
+        if self.request.user.is_staff:
+            return User.objects.all()
+        return User.objects.filter(pk=self.request.user.pk)
 
     def create(self, request, *args, **kwargs):
         """Register a new user"""
@@ -69,9 +75,12 @@ class UserViewSet(viewsets.ModelViewSet):
         password = serializer.validated_data.get('password')
 
         # Find user by username or email
-        user = User.objects.filter(
-            Q(username=username) | Q(email=email)
-        ).first()
+        filters = Q()
+        if username:
+            filters |= Q(username=username)
+        if email:
+            filters |= Q(email=email)
+        user = User.objects.filter(filters).first()
 
         if not user or not user.check_password(password):
             return Response(
@@ -92,7 +101,7 @@ class UserViewSet(viewsets.ModelViewSet):
         try:
             request.user.auth_token.delete()
             return Response({'message': 'Logout successful'})
-        except:
+        except Token.DoesNotExist:
             return Response(
                 {'error': 'Logout failed'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -140,7 +149,7 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer.save()
         return Response({
             'message': 'Profile updated successfully',
-            'user': serializer.data
+            'user': UserSerializer(request.user).data
         })
 
     def retrieve(self, request, *args, **kwargs):
